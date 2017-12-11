@@ -4,6 +4,9 @@
 #
 # FHEM Module for Elgato Stream Deck
 #
+# Copyright (C) 2017 Stephan Blecher - www.blecher.at
+# https://github.com/blecher-at/fhem-streamdeck
+# 
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
 # as published by the Free Software Foundation; either version 2
@@ -13,7 +16,6 @@
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-
 #
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
@@ -27,12 +29,8 @@ package main;
 use strict;
 use warnings;
 
-use Data::Dumper;
-
 sub STREAMDECK_KEY_Initialize($) {
 	my ($hash) = @_;
-
-	require "$attr{global}{modpath}/FHEM/DevIo.pm";
 
 	$hash->{DefFn}	= "STREAMDECK_KEY_Define";
 	$hash->{AttrFn}	= "STREAMDECK_KEY_Attr";
@@ -59,13 +57,7 @@ sub STREAMDECK_KEY_Define($$) {
 	$hash->{key} = $key;
 	$hash->{IODev} = $defs{$parentdevice};
 	
-	
-	
-	#Close Device to initialize properly
-	DevIo_CloseDev($hash);
-
-	my $ret = DevIo_OpenDev($hash, 1, "STREAMDECK_DoInit");
-	return $ret;
+	return undef;
 }
 
 sub STREAMDECK_KEY_Attr($$$$) {
@@ -74,13 +66,8 @@ sub STREAMDECK_KEY_Attr($$$$) {
 	my $iconPath = "";
 	Log3 $name, 5, "Setting ATTR $name $command $attribute $value";
 
-	ATTRIBUTE_HANDLER: {
+	STREAMDECK_KEY_SetImage($hash, $value) if $attribute eq "image";
 	
-		$attribute eq "image" and do {
-			STREAMDECK_KEY_SetImage($hash, $value);
-
-		};
-	};
 }
 
 sub STREAMDECK_KEY_Notify {
@@ -91,6 +78,7 @@ sub STREAMDECK_KEY_Notify {
 	return "" if $dev->{NAME} ne $hash->{notifydevice};
 	
 	#Redraw on device state change
+
 	STREAMDECK_KEY_SetImage($hash, undef);
 }
 
@@ -99,7 +87,7 @@ sub STREAMDECK_KEY_PRESSED($$) {
 	my $stringvalue = $value ? "pressed" : "released";
 	my $name = $hash->{NAME};
 	
-	Log3 $name, 5, "Setting state $value";
+	#Log3 $name, 5, "Setting state $name $value";
 	
 	readingsBeginUpdate($hash);
 	readingsBulkUpdate($hash, "pressed", $value);
@@ -135,16 +123,15 @@ sub STREAMDECK_KEY_SetImage($$) {
     RemoveInternalTimer($hash, 'STREAMDECK_KEY_SetImage');
 
 	# get image attr from device if not given
-	$value = $attr{$name}{"image"} if !$value; 
+	$value = $attr{$name}{image} unless defined $value; 
+	$attr{$name}{image} = $value;
 	
-	my ($type, $vv, $extra) = split(":", $value);
-			
-	my %parsedvalue = split /:| /,$value;
+	my %parsedvalue = split /:|[ |]/,$value;
 
-	my $iconsloaded = FW_iconPath("on.png");
+	my $iconsloaded = FW_iconName("on.png");
 	if (!$iconsloaded) {
-		Log3 $name, 3, "Icons not yet initialized. waiting for FHEMWEB";
-		FW_answerCall(""); # workaround: trigger fake fhemweb request to initialize icons
+		Log3 $name, 3, "Icons not yet initialized. triggering fhemweb init";
+		FW_answerCall(undef); # workaround: trigger fake fhemweb request to initialize icons
 	}
 
 	if ($parsedvalue{device}) {
@@ -152,18 +139,25 @@ sub STREAMDECK_KEY_SetImage($$) {
 		$hash->{notifydevice} = $parsedvalue{device};
 			
 		# read status icon. retry if no icon exists for this device
-		($parsedvalue{icon}) = FW_dev2image($parsedvalue{device});
-		if($parsedvalue{icon} eq undef) {
-			InternalTimer(gettimeofday() + 5, 'STREAMDECK_KEY_SetImage', $hash, 1);
+		my ($icon) = FW_dev2image($parsedvalue{device});
+		if(!$icon) {
+			#FW_answerCall(""); # workaround: trigger fake fhemweb request to initialize icons
+			#InternalTimer(gettimeofday() + 5, 'STREAMDECK_KEY_SetImage', $hash, 1);
+			my $d = $defs{$parsedvalue{device}};
+			my $state = $d->{STATE};
+			
+			# default icon when state does not match any icon is the defined icon
+			$icon = $parsedvalue{icon};
+			$icon = "toggle.png" if !$icon; # use toggle if no fallback icon is defined
+			Log3 $name, 5, "Setting $name image failed. no icon found for ".$parsedvalue{device}.": $state, fallback to $icon";
 		}			
+		$parsedvalue{icon} = $icon;
+
 	}
 	
 	if ($parsedvalue{icon}) {
 		my $icon = $parsedvalue{icon};
 		my $iconPath = $attr{global}{modpath}."/www/images/".FW_iconPath(FW_iconName($icon));
-		#my $iconPath = $attr{global}{modpath}."/www/images/default/$icon";
-		Log3 $name, 5, "Setting $name image to: $vv -> $iconPath $icon";
-
 		$parsedvalue{iconPath} = $iconPath;
 	}
 	
@@ -182,7 +176,7 @@ sub STREAMDECK_KEY_SetImage($$) {
 		$parsedvalue{rotate} = $hash->{IODev}{rotate};
 	}
 	
-	Log3 $name, 5, "< Setting image to $value ". Dumper(\%parsedvalue);
+	Log3 $name, 5, "Setting image to $value = $parsedvalue{iconPath} $parsedvalue{bg}";
 	my $data = STREAMDECK_CreateImage(\%parsedvalue);
 	STREAMDECK_SendImage($name, $hash->{IODev}, $key, $data);
 	

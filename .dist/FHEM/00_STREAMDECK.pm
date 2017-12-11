@@ -5,6 +5,7 @@
 # FHEM Module for Elgato Stream Deck
 #
 # Copyright (C) 2017 Stephan Blecher - www.blecher.at
+# https://github.com/blecher-at/fhem-streamdeck
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -29,6 +30,8 @@ use strict;
 use warnings;
 use GPUtils qw(:all);
 use Image::Magick;
+use threads;
+use DevIo;
 
 ######################################################################################
 sub STREAMDECK_Clear($);
@@ -42,8 +45,6 @@ sub STREAMDECK_ReInit($);
 sub STREAMDECK_Initialize($) {
   my ($hash) = @_;
 
-  require "$attr{global}{modpath}/FHEM/DevIo.pm";
-
   $hash->{ReadFn}  = "STREAMDECK_Read";
   $hash->{ReadyFn} = "STREAMDECK_Ready";
   $hash->{DefFn}   = "STREAMDECK_Define";
@@ -53,9 +54,6 @@ sub STREAMDECK_Initialize($) {
   $hash->{ShutdownFn} = "STREAMDECK_Shutdown";
   $hash->{AttrList}  = "disable:0,1 brightness ". $readingFnAttributes;
 }
-
-#####################################
-# define <name> STEAMDECK <devicefile>
 
 sub STREAMDECK_Define($$)
 {
@@ -80,8 +78,6 @@ sub STREAMDECK_Define($$)
 	return $ret;
 }
 
-
-#####################################
 sub STREAMDECK_Undef($$)
 {
 	my ($hash, $arg) = @_;
@@ -90,8 +86,6 @@ sub STREAMDECK_Undef($$)
 	return undef;
 }
 
-
-#####################################
 sub STREAMDECK_Shutdown($)
 {
   my ($hash) = @_;
@@ -112,10 +106,18 @@ sub STREAMDECK_Clear($) {
 }
 
 sub STREAMDECK_DoInit($$) {
-	# TODO
 	my ($hash) = @_;
 	my $name = $hash->{NAME};
-	Log3 $name, 3,"STREAMDECK: Initialization";
+	Log3 $name, 3, "STREAMDECK: $name Initialization";
+	
+	# set black as default
+	my %parsedvalue = ();
+	$parsedvalue{bg} = "black";
+	my $data = STREAMDECK_CreateImage(\%parsedvalue);
+	
+	for (1..15) {
+		STREAMDECK_SendImage($name, $hash, $_, $data);
+	}
 	
 	#restore images after device reconnect
 	GP_ForallClients($hash, sub {
@@ -126,20 +128,11 @@ sub STREAMDECK_DoInit($$) {
 		}
 	});
 
-	# set black as default
-	my %parsedvalue = ();
-	$parsedvalue{bg} = "black";
-	my $data = STREAMDECK_CreateImage(\%parsedvalue);
-	
-	for (1..15) {
-		STREAMDECK_SendImage($name, $hash, $_, $data);
-	}
-  
 }
 
 
 sub STREAMDECK_CreateImage($) {
-	my $v = shift;
+	my ($v) = @_;
 	my $image = Image::Magick->new();
 	
 	if ($v->{iconPath}) {
@@ -148,10 +141,30 @@ sub STREAMDECK_CreateImage($) {
 		$image->Resize(geometry => "72x72") if !$v->{resize};
 		$image->Resize(geometry => $v->{resize}) if $v->{resize} =~ 'x';
 		$image->Rotate($v->{rotate}) if $v->{rotate};
-		$image->Extent(geometry => "72x72", gravity=>'Center', background=>$v->{bg});
-	} else {
-		$image->Set(size=>"72x72");
-		$image->ReadImage('canvas:' . $v->{bg});
+		my $icongravity = $v->{icongravity} || 'center';
+		
+		$image->Extent(geometry => "72x72", gravity=>$icongravity, background=>$v->{bg});
+		#$image->Annotate(gravity=>'south', font=>'Arial', pointsize=>10, fill=>'white', x=>0, y=>0, text=>"NORAD" );
+		#$image->Crop(geometry => "72x72", x=>0, y=>0);
+		
+		if($v->{text}) {
+			my $textsize = $v->{textsize} || 16;
+			my $textfill = $v->{textfill} || 'white';
+			my $textstroke = $v->{textstroke} || 'black';
+			my $textgravity = $v->{textgravity} || 'south';
+			my $textfont = $v->{font};
+			
+			$image->Annotate(
+				text=>$v->{text},
+				antialias=>1,
+				gravity=>$textgravity, 
+				font=>$textfont, 
+				pointsize=>$textsize, 
+				fill=>$textfill, 
+				x=>0, y=>0);
+			$image->Crop(geometry => "72x72", x=>0, y=>0);
+		}
+		$image->Flop(); #image is expected mirrored on streamdeck
 	}
 	
 	my @pixels = $image->GetPixels(width => 72, height => 72, map => 'BGR');
@@ -163,10 +176,9 @@ sub STREAMDECK_CreateImage($) {
 
 sub STREAMDECK_SendImage($$$$) {
 	my ($name, $iodev, $key, $data) = @_;
-	#my $name = $hash->{NAME};
 
 	if(length($data) != 15552) {
-		Log3 $name, 5, "Illegal image data, length=".length($data);
+		Log3 $name, 3, "Illegal image data, length=".length($data);
 		return;
 	}
 	
@@ -188,11 +200,12 @@ sub STREAMDECK_SendImage($$$$) {
 	my $datax = $header1 . substr($data, 0, $data1_maxlen) . substr($filler, 0, 8191 - $header1_len - $data1_maxlen).
 				$header2 . substr($data, $data1_maxlen)    . substr($filler, 0, 8191 - $header2_len - $data2_maxlen);
 
-	Log3 $name, 5, "Setting $name image to: ". length($datax);
+	Log3 $name, 9, "Setting $name image...";
 	
 	# this hack is needed for the images not being garbled if the first byte of syswrite is 0.
 	substr($datax, 4096, 1) = chr(0x1) if ord(substr($datax, 4096, 1)) == 0;
 	substr($datax, 8191+4096, 1) = chr(0x1) if ord(substr($datax, 8191+4096, 1)) == 0;
+	
 	
 	# Need to send in chunks of not more than 4k
 	if($iodev->{DIODev}) {
@@ -201,6 +214,7 @@ sub STREAMDECK_SendImage($$$$) {
 		syswrite($iodev->{DIODev}, $datax, 4096, 8191);
 		syswrite($iodev->{DIODev}, $datax, 4095, 8191+4096);
 	}
+	Log3 $name, 9, "Setting image... done";
 }
 
 
@@ -279,25 +293,6 @@ sub STREAMDECK_Attr($$$$) {
 }
 
 
-
-#####################################
-sub STREAMDECK_Set($@) {
-  my ($hash, @a) = @_;
-  my $name = $hash->{NAME};
-  Log3 $name, 3,"STREAMDECK_Set";
-  return "no get value specified" if(@a < 2);
-
-}
-
-#####################################
-sub STREAMDECK_Get($@) {
-  my ($hash, @a) = @_;
-  my $name = $hash->{NAME};
-  Log3 $name, 3,"STREAMDECK_Get";
-  return "no get value specified" if(@a < 2);
-  
-
-}
 
 1;
 
