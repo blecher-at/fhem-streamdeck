@@ -12,4 +12,4 @@ Installation (fhem command):
       update 
 
 Sample Configfile: https://raw.githubusercontent.com/blecher-at/fhem-streamdeck/master/streamdock.sample.cfg
-Discussion (German): https://forum.fhem.de/index.php?topic=80897.msg729510
+Discussion: https://forum.fhem.de/index.php?topic=80897.msg729510
