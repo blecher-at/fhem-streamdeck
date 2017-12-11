@@ -13,4 +13,5 @@ dist:
 	mkdir $(DISTDIR)/FHEM
 
 	cp $(MODDIR)/*STREAMDECK* $(DISTDIR)/FHEM
+	cp $(ROOT)/CHANGED $(DISTDIR)/
 	cd $(DISTDIR) && perl $(ROOT)/make_controlfile.pl FHEM/* > controls_streamdeck.txt
