@@ -1,30 +1,37 @@
 use Image::Magick;
+use warnings;
+use strict;
 
 sub STREAMDECK_CreateImage($$) {
 	my ($v, $file) = @_;
-	my $image = Image::Magick->new();
-
+	my $image = Image::Magick->new;
+	
 	if ($v->{iconPath}) {
-		$image->Read($v->{iconPath});
 		
-		$image->Resize(geometry => "72x72") if !$v->{resize};
-		$image->Resize(geometry => $v->{resize}) if $v->{resize} =~ 'x';
-		$image->Rotate($v->{rotate}) if $v->{rotate};
+		$image->Read($v->{iconPath});
+		if($v->{iconPath} =~ '.svg') {
+			#$image->Set(size=>"288x288");
+			#$image->ReadImage('canvas:white');
+#			$image->Draw(fill=>'black', primitive=>'@'.$v->{iconPath}, size=>"288x288");
+			#$image->Draw(fill=>'black', primitive=>{'@/opt/fhem/www/images/default/system_fhem_reboot.svg'}, size=>"288x288");
+			$image->ReadImage($v->{iconPath});
+			print "AOAALA";
+		} else {
+			#$image->Read($v->{iconPath});
+		}
+		
+		$image->Resize(geometry => "72x72");
+		#$image->Resize(geometry => $v->{resize}) if $v->{resize} =~ 'x';
+		#$image->Rotate($v->{rotate}) if $v->{rotate};
 		$image->Extent(geometry => "72x72", gravity=>'Center', background=>$v->{bg});
 		
-		if($v->{text}) {
-			$textsize = $v->{textsize} || 16;
-			$textfill = $v->{textfill} || 'white';
-			$textstroke = $v->{textstroke} || 'black';
-			$textgravity = $v->{textgravity}|| 'south';
-			$textfont = $v->{font};
-			
-			$image->Annotate(gravity=>$textgravity, 
-				font=>$textfont, pointsize=>$textsize, 
-				fill=>$textfill, x=>0, y=>0, stroke=>$textstroke, text=>$v->{text} );
-			$image->Crop(geometry => "72x72", x=>0, y=>0);
-		}
-	}
+	}			
+	print "AOAALA";
+
+	my @pixels = $image->GetPixels(width => 72, height => 72, map => 'BGR');
+
+	my $bitmapdata = join('', map { pack("H", sprintf("%04x", $_)) } @pixels);
+	print "BITMAP: ".$bitmapdata;
 	
 	$image->Write($file);
 }
@@ -36,5 +43,5 @@ sub test($$) {
 }
 
 
-test("iconPath:/opt/fhem/www/images/default/on.png bg:black text:foobar", "test001.png");
-test("iconPath:/opt/fhem/www/images/default/on.png bg:black text:foobarextralong", "test002.png");
+#test("iconPath:/opt/fhem/www/images/default/on.png bg:black text:foobar", "test001.png");
+test("iconPath:/opt/fhem/www/images/fhemSVG/system_fhem_reboot.svg bg:black svgcolor:red text:foobarextralong", "test003.png");

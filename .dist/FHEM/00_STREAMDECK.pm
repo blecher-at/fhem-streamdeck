@@ -136,21 +136,34 @@ sub STREAMDECK_CreateImage($) {
 	my $image = Image::Magick->new();
 	
 	if ($v->{iconPath}) {
-		$image->Read($v->{iconPath});
-		
+		my $issvg = $v->{iconPath} =~ ".svg";
+
+		if($issvg) {
+			my $svgfill = $v->{svgfill} || 'white'; #svgfill is default white because default bg is black
+			
+			$image->Set(size=>"720x720", background=>'transparent'); #import it larger, then resize
+			$image->Read(filename => $v->{iconPath});
+			$image->Opaque(color=>'black', fill=>$svgfill); #set the fill color by replacing black with it
+		} else {
+			$image->Read(filename => $v->{iconPath});
+		}
+
+		# resize the image
 		$image->Resize(geometry => "72x72") if !$v->{resize};
 		$image->Resize(geometry => $v->{resize}) if $v->{resize} =~ 'x';
-		$image->Rotate($v->{rotate}) if $v->{rotate};
+
+		# position the image
 		my $icongravity = $v->{icongravity} || 'center';
-		
 		$image->Extent(geometry => "72x72", gravity=>$icongravity, background=>$v->{bg});
-		#$image->Annotate(gravity=>'south', font=>'Arial', pointsize=>10, fill=>'white', x=>0, y=>0, text=>"NORAD" );
-		#$image->Crop(geometry => "72x72", x=>0, y=>0);
-		
-		if($v->{text}) {
+	} else {
+		$image->Set(size=>"72x72");
+		$image->Read('canvas:'.$v->{bg});
+	}
+	
+	if($v->{text}) {
 			my $textsize = $v->{textsize} || 16;
 			my $textfill = $v->{textfill} || 'white';
-			my $textstroke = $v->{textstroke} || 'black';
+			my $textstroke = $v->{textstroke} || 'transparent';
 			my $textgravity = $v->{textgravity} || 'south';
 			my $textfont = $v->{font};
 			
@@ -161,15 +174,18 @@ sub STREAMDECK_CreateImage($) {
 				font=>$textfont, 
 				pointsize=>$textsize, 
 				fill=>$textfill, 
+				stroke=>$textstroke, 
 				x=>0, y=>0);
 			$image->Crop(geometry => "72x72", x=>0, y=>0);
-		}
-		$image->Flop(); #image is expected mirrored on streamdeck
-	}
+		}	
+	$image->Rotate($v->{rotate}) if $v->{rotate};
+	$image->Flop(); #image is expected mirrored on streamdeck
 	
 	my @pixels = $image->GetPixels(width => 72, height => 72, map => 'BGR');
 
 	my $bitmapdata = join('', map { pack("H", sprintf("%04x", $_)) } @pixels);
+	
+	undef $image; #cleanup
 	return $bitmapdata;
 }
 
