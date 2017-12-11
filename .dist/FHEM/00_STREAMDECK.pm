@@ -147,7 +147,7 @@ sub STREAMDECK_CreateImage($) {
 		
 		$image->Resize(geometry => "72x72") if !$v->{resize};
 		$image->Resize(geometry => $v->{resize}) if $v->{resize} =~ 'x';
-
+		$image->Rotate($v->{rotate}) if $v->{rotate};
 		$image->Extent(geometry => "72x72", gravity=>'Center', background=>$v->{bg});
 	} else {
 		$image->Set(size=>"72x72");

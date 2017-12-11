@@ -178,6 +178,10 @@ sub STREAMDECK_KEY_SetImage($$) {
 		}
 	}
 	
+	if (!$parsedvalue{rotate} && $hash->{IODev}{rotate}) {
+		$parsedvalue{rotate} = $hash->{IODev}{rotate};
+	}
+	
 	Log3 $name, 5, "< Setting image to $value ". Dumper(\%parsedvalue);
 	my $data = STREAMDECK_CreateImage(\%parsedvalue);
 	STREAMDECK_SendImage($name, $hash->{IODev}, $key, $data);
