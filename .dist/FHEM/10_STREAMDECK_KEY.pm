@@ -26,9 +26,8 @@ package main;
 
 use strict;
 use warnings;
-use Image::Magick;
-#use FileHandle;
-#use Data::Dumper;
+
+use Data::Dumper;
 
 sub STREAMDECK_KEY_Initialize($) {
 	my ($hash) = @_;
@@ -40,8 +39,6 @@ sub STREAMDECK_KEY_Initialize($) {
 	$hash->{NotifyFn} = "STREAMDECK_KEY_Notify";
 	$hash->{AttrList}	= "disable:0,1 image ". $readingFnAttributes;
 	$hash->{NotifyOrderPrefix} = "99-" # make sure notifies are called last
-	#unshift $FW_iconDirs, "default";
-	#@FW_iconDirs = split(":", "default:openautomation"));
 }
 
 sub STREAMDECK_KEY_Define($$) {
@@ -80,12 +77,11 @@ sub STREAMDECK_KEY_Attr($$$$) {
 	ATTRIBUTE_HANDLER: {
 	
 		$attribute eq "image" and do {
-			STREAMDECK_KEY_SetImage($hash, $attribute, $value);
+			STREAMDECK_KEY_SetImage($hash, $value);
 
 		};
 	};
 }
-
 
 sub STREAMDECK_KEY_Notify {
 	my ($hash, $dev) = @_;
@@ -95,34 +91,80 @@ sub STREAMDECK_KEY_Notify {
 	return "" if $dev->{NAME} ne $hash->{notifydevice};
 	
 	#Redraw on device state change
-	STREAMDECK_KEY_SetImage($hash, "image", $attr{$name}{"image"});
+	STREAMDECK_KEY_SetImage($hash, undef);
 }
 
-
-sub STREAMDECK_KEY_SetImage($$$) {
-	my ($hash,$attribute,$value) = @_;
+sub STREAMDECK_KEY_PRESSED($$) {
+	my ($hash, $value) = @_;
+	my $stringvalue = $value ? "pressed" : "released";
 	my $name = $hash->{NAME};
+	
+	Log3 $name, 5, "Setting state $value";
+	
+	readingsBeginUpdate($hash);
+	readingsBulkUpdate($hash, "pressed", $value);
+	readingsBulkUpdate($hash, "lastpressed", 1) if $value;
+	readingsBulkUpdateIfChanged($hash, "state", $stringvalue);
+	readingsEndUpdate($hash, 1);
+	
+	if ( $value == 1 ) {
+		my $lngpressInterval = AttrVal($hash->{NAME}, "longpressinterval", "2");
+		InternalTimer(gettimeofday() + $lngpressInterval, 'STREAMDECK_KEY_longpress', $hash, 0);
+	} else {
+		RemoveInternalTimer('STREAMDECK_KEY_longpress');
+	}
+
+}
+
+sub STREAMDECK_KEY_longpress($) {
+	my ($hash) = @_;
+	my $name = $hash->{NAME};
+	my $pressed = ReadingsVal($name, "pressed", 0);
+	
+	if ($pressed) {
+		Log3 $name, 5, "Setting longpress";
+		readingsSingleUpdate($hash, 'state', 'longpress', 1);
+	}
+}
+
+sub STREAMDECK_KEY_SetImage($$) {
+	my ($hash,$value) = @_;
+	my $name = $hash->{NAME};
+	my $key = $hash->{key};
+
+    RemoveInternalTimer($hash, 'STREAMDECK_KEY_SetImage');
+
+	# get image attr from device if not given
+	$value = $attr{$name}{"image"} if !$value; 
+	
 	my ($type, $vv, $extra) = split(":", $value);
 			
 	my %parsedvalue = split /:| /,$value;
-	#Log3 $name, 5, "> Setting image to $value : ". Dumper(\%parsedvalue);
 
+	my $iconsloaded = FW_iconPath("on.png");
+	if (!$iconsloaded) {
+		Log3 $name, 3, "Icons not yet initialized. waiting for FHEMWEB";
+		FW_answerCall(""); # workaround: trigger fake fhemweb request to initialize icons
+	}
+
+	if ($parsedvalue{device}) {
+		# register notify
+		$hash->{notifydevice} = $parsedvalue{device};
+			
+		# read status icon. retry if no icon exists for this device
+		($parsedvalue{icon}) = FW_dev2image($parsedvalue{device});
+		if($parsedvalue{icon} eq undef) {
+			InternalTimer(gettimeofday() + 5, 'STREAMDECK_KEY_SetImage', $hash, 1);
+		}			
+	}
+	
 	if ($parsedvalue{icon}) {
 		my $icon = $parsedvalue{icon};
-		my $iconPath = $attr{global}{modpath}."/www/images/default/$icon";
+		my $iconPath = $attr{global}{modpath}."/www/images/".FW_iconPath(FW_iconName($icon));
+		#my $iconPath = $attr{global}{modpath}."/www/images/default/$icon";
 		Log3 $name, 5, "Setting $name image to: $vv -> $iconPath $icon";
 
 		$parsedvalue{iconPath} = $iconPath;
-	}
-	
-	if ($parsedvalue{device}) {
-		my $devicename = $parsedvalue{device};
-		$hash->{notifydevice} = $devicename;
-		my ($icon) = FW_dev2image($devicename);
-		my $iconPath = $attr{global}{modpath}."/www/images/default/$icon.png";
-		$parsedvalue{iconPath} = $iconPath;
-
-		Log3 $name, 5, "Setting image to device $devicename state $icon";
 	}
 	
 	if ($parsedvalue{color}) {
@@ -136,79 +178,13 @@ sub STREAMDECK_KEY_SetImage($$$) {
 		}
 	}
 	
-	
-	#Log3 $name, 5, "< Setting image to $value : ". Dumper(\%parsedvalue);
-	my $data = STREAMDECK_KEY_CreateImage(\%parsedvalue);
-	STREAMDECK_KEY_SendImage($hash, $data);
+	Log3 $name, 5, "< Setting image to $value ". Dumper(\%parsedvalue);
+	my $data = STREAMDECK_CreateImage(\%parsedvalue);
+	STREAMDECK_SendImage($name, $hash->{IODev}, $key, $data);
 	
 	return undef;
 }
 
-
-sub STREAMDECK_KEY_CreateImage($) {
-	my $v = shift;
-	my $image = Image::Magick->new();
-	
-	if ($v->{iconPath}) {
-		$image->Read($v->{iconPath});
-		
-		$image->Resize(geometry => "72x72") if !$v->{resize};
-		$image->Resize(geometry => $v->{resize}) if $v->{resize} =~ 'x';
-
-		$image->Extent(geometry => "72x72", gravity=>'Center', background=>$v->{bg});
-	} else {
-		$image->Set(size=>"72x72");
-		$image->ReadImage('canvas:' . $v->{bg});
-	}
-	
-	my @pixels = $image->GetPixels(width => 72, height => 72, map => 'BGR');
-
-	my $bitmapdata = join('', map { pack("H", sprintf("%04x", $_)) } @pixels);
-	return $bitmapdata;
-}
-
-sub STREAMDECK_KEY_SendImage($$) {
-	my ($hash, $data) = @_;
-	my $iodev = $hash->{IODev};
-	my $name = $hash->{NAME};
-
-	if(length($data) != 15552) {
-		Log3 $name, 5, "Illegal image data, length=".length($data);
-		return;
-	}
-	
-	# Store the last image created, and simply restore it in case the device was unplugged.
-	$hash->{helper}{LASTIMGDATA} = $data;
-	
-	my $hkey = sprintf("%02X", $hash->{key});
-	my $filler = pack("H*","00"x4096);
-
-	my $header1 = pack("H*", "0201010000". $hkey ."00000000000000000000424df63c000000000000360000002800000048000000480000000100180000000000c03c0000c40e0000c40e00000000000000000000");
-	my $header2 = pack("H*", "0201020001". $hkey ."00000000000000000000");
-
-	my $header1_len = length($header1);
-	my $header2_len = length($header2);
-	my $data1_maxlen = 7749; # first page has 7749 bytes
-	my $data2_maxlen = 7803; # first page has 7803 bytes
-	
-	
-	my $datax = $header1 . substr($data, 0, $data1_maxlen) . substr($filler, 0, 8191 - $header1_len - $data1_maxlen).
-				$header2 . substr($data, $data1_maxlen)    . substr($filler, 0, 8191 - $header2_len - $data2_maxlen);
-
-	Log3 $name, 5, "Setting $name image to: ". length($datax);
-	
-	# this hack is needed for the images not being garbled if the first byte of syswrite is 0.
-	substr($datax, 4096, 1) = chr(0x1) if ord(substr($datax, 4096, 1)) == 0;
-	substr($datax, 8191+4096, 1) = chr(0x1) if ord(substr($datax, 8191+4096, 1)) == 0;
-	
-	# Need to send in chunks of not more than 4k
-	if($iodev->{DIODev}) {
-		syswrite($iodev->{DIODev}, $datax, 4096, 0);  
-		syswrite($iodev->{DIODev}, $datax, 4095, 4096);
-		syswrite($iodev->{DIODev}, $datax, 4096, 8191);
-		syswrite($iodev->{DIODev}, $datax, 4095, 8191+4096);
-	}
-}
 
 
 
