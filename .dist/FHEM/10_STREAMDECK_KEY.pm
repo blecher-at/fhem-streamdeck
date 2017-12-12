@@ -35,7 +35,7 @@ sub STREAMDECK_KEY_Initialize($) {
 	$hash->{DefFn}	= "STREAMDECK_KEY_Define";
 	$hash->{AttrFn}	= "STREAMDECK_KEY_Attr";
 	$hash->{NotifyFn} = "STREAMDECK_KEY_Notify";
-	$hash->{AttrList}	= "disable:0,1 image ". $readingFnAttributes;
+	$hash->{AttrList}	= "disable:0,1 text font image ". $readingFnAttributes;
 	$hash->{NotifyOrderPrefix} = "99-" # make sure notifies are called last
 }
 
@@ -56,6 +56,7 @@ sub STREAMDECK_KEY_Define($$) {
 	$hash->{NAME} = $name;
 	$hash->{key} = $key;
 	$hash->{IODev} = $defs{$parentdevice};
+	$hash->{IODevName} = $parentdevice;
 	
 	return undef;
 }
@@ -66,20 +67,24 @@ sub STREAMDECK_KEY_Attr($$$$) {
 	my $iconPath = "";
 	Log3 $name, 5, "Setting ATTR $name $command $attribute $value";
 
-	STREAMDECK_KEY_SetImage($hash, $value) if $attribute eq "image";
+	# if attr is set after device was opened, update
+	RemoveInternalTimer($hash, "STREAMDECK_KEY_SetImage");
+	InternalTimer(0, "STREAMDECK_KEY_SetImage", $hash) if $hash->{IODev}{opened};
 	
+	return undef;
 }
 
 sub STREAMDECK_KEY_Notify {
 	my ($hash, $dev) = @_;
 	my $name = $hash->{NAME};
+	my $devname = $dev->{NAME};
 	
 	return "" if !$hash->{notifydevice};
-	return "" if $dev->{NAME} ne $hash->{notifydevice};
+	return "" if $devname ne $hash->{notifydevice};
 	
 	#Redraw on device state change
-
-	STREAMDECK_KEY_SetImage($hash, undef);
+	Log3 $name, 5, "STREAMDECK_KEY_Notify from $devname, updating image $name";
+	STREAMDECK_KEY_SetImage($hash);
 }
 
 sub STREAMDECK_KEY_PRESSED($$) {
@@ -115,19 +120,30 @@ sub STREAMDECK_KEY_longpress($) {
 	}
 }
 
-sub STREAMDECK_KEY_SetImage($$) {
-	my ($hash,$value) = @_;
+sub STREAMDECK_KEY_SetImage($) {
+	my ($hash) = @_;
 	my $name = $hash->{NAME};
 	my $key = $hash->{key};
 
     RemoveInternalTimer($hash, 'STREAMDECK_KEY_SetImage');
 
-	# get image attr from device if not given
-	$value = $attr{$name}{image} unless defined $value; 
-	$attr{$name}{image} = $value;
-	
+	# get image attr from device and parse
+	my $value = $attr{$name}{image}; 
 	my %parsedvalue = split /:|[ |]/,$value;
-
+	
+	# set other attributes to the hash as they were defined directly
+	foreach(qw(font text rotate)) {
+		$parsedvalue{$_} = $attr{$name}{$_} unless defined $parsedvalue{$_};
+	}
+	
+	# magic parse text 
+	if ($parsedvalue{text}) {
+		#my $st = ;
+		(undef, my $magictext) = ReplaceSetMagic($hash, 1, $parsedvalue{text});
+		Log3 $name, 5, "ReplaceSetMagic text value $parsedvalue{text} to '$magictext'";
+		$parsedvalue{text} = $magictext;
+	}
+		
 	my $iconsloaded = FW_iconName("on.png");
 	if (!$iconsloaded) {
 		Log3 $name, 3, "Icons not yet initialized. triggering fhemweb init";
@@ -172,11 +188,9 @@ sub STREAMDECK_KEY_SetImage($$) {
 		}
 	}
 	
-	if (!$parsedvalue{rotate} && $hash->{IODev}{rotate}) {
-		$parsedvalue{rotate} = $hash->{IODev}{rotate};
-	}
+	$parsedvalue{rotate} = AttrVal($hash->{IODevName}, "rotate", 0) unless $parsedvalue{rotate};
 	
-	Log3 $name, 5, "Setting image to $value = $parsedvalue{iconPath} $parsedvalue{bg}";
+	#Log3 $name, 5, "Setting image to $value = $parsedvalue{iconPath} $parsedvalue{bg}";
 	my $data = STREAMDECK_CreateImage(\%parsedvalue);
 	STREAMDECK_SendImage($name, $hash->{IODev}, $key, $data);
 	

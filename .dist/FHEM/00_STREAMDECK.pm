@@ -34,25 +34,24 @@ use threads;
 use DevIo;
 
 ######################################################################################
-sub STREAMDECK_Clear($);
 sub STREAMDECK_Read($);
 sub STREAMDECK_Ready($);
 sub STREAMDECK_Parse($$);
 sub STREAMDECK_CmdConfig($);
 sub STREAMDECK_ReInit($);
 
-
 sub STREAMDECK_Initialize($) {
   my ($hash) = @_;
 
   $hash->{ReadFn}  = "STREAMDECK_Read";
   $hash->{ReadyFn} = "STREAMDECK_Ready";
+  $hash->{SetFn}   = "STREAMDECK_Set";
   $hash->{DefFn}   = "STREAMDECK_Define";
   $hash->{UndefFn} = "STREAMDECK_Undef";
   $hash->{AttrFn}  = "STREAMDECK_Attr";
   $hash->{StateFn} = "STREAMDECK_SetState";
   $hash->{ShutdownFn} = "STREAMDECK_Shutdown";
-  $hash->{AttrList}  = "disable:0,1 brightness ". $readingFnAttributes;
+  $hash->{AttrList}  = "disable:0,1 brightness rotate ". $readingFnAttributes;
 }
 
 sub STREAMDECK_Define($$)
@@ -93,28 +92,69 @@ sub STREAMDECK_Shutdown($)
 }
 
 
+sub STREAMDECK_Set($@) {
+	my ($hash, @a) = @_;
+	my $name = $hash->{NAME};
+	my $cmd = $a[1];
+	
+	my @sets = qw(on off toggle redraw);
+	return 'Unknown argument ' . $cmd . ', choose one of ' . join(' ', @sets) unless $cmd ~~ @sets;
+
+	STREAMDECK_Brightness_Toggle($hash) if($cmd eq "toggle");
+	STREAMDECK_Brightness($hash, $attr{$name}{brightness}) if($cmd eq "on");
+	STREAMDECK_Brightness($hash, 0) if($cmd eq "off");
+	STREAMDECK_Redraw($hash) if $cmd eq "redraw";
+	
+}
+
+sub STREAMDECK_Brightness_Toggle($) {
+	my ($hash) = @_;
+	my $name = $hash->{NAME};
+	STREAMDECK_Brightness($hash, $hash->{brightnesslevel} ? 0 : $attr{$name}{brightness});
+}
+
+sub STREAMDECK_Brightness($$) {
+	my ($hash, $value) = @_;
+	my $name = $hash->{NAME};
+
+	return "brightness must be between 0 and 100" unless $value >= 0 and $value <= 100;
+	
+	$hash->{brightnesslevel} = $value;
+	my $datax = pack("H*", "0555aad101" . sprintf("%02X", $value). "00"x11);
+	my $setfeaturemagic = 1074546694;
+	my $ret = ioctl($hash->{DIODev}, $setfeaturemagic, $datax);
+
+	Log3 $name, 5, "Set brightness to $value $ret";
+	return undef;
+}
+
 sub STREAMDECK_SetState($$$$) {
   my ($hash, $tim, $vt, $val) = @_;
 	my $name = $hash->{NAME};
   Log3 $name, 3,"STREAMDECK_SetState: $tim $vt $val";
+  
+  STREAMDECK_OnOpened($hash) if $vt eq "state" and $val eq "opened";
   return undef;
 }
 
-
-sub STREAMDECK_Clear($) {
-  return undef;
-}
-
-sub STREAMDECK_DoInit($$) {
+sub STREAMDECK_OnOpened($) {
 	my ($hash) = @_;
 	my $name = $hash->{NAME};
-	Log3 $name, 3, "STREAMDECK: $name Initialization";
+	Log3 $name, 3, "STREAMDECK: $name opened";
 	
+	$hash->{opened} = 1;
+
+	STREAMDECK_Redraw($hash);
+}
+
+sub STREAMDECK_Redraw($) {
+	my ($hash) = @_;
+	my $name = $hash->{NAME};
+
 	# set black as default
 	my %parsedvalue = ();
 	$parsedvalue{bg} = "black";
 	my $data = STREAMDECK_CreateImage(\%parsedvalue);
-	
 	for (1..15) {
 		STREAMDECK_SendImage($name, $hash, $_, $data);
 	}
@@ -124,7 +164,15 @@ sub STREAMDECK_DoInit($$) {
 		my $client = shift;
 		STREAMDECK_KEY_SetImage($client, undef);
 	});
+	
+}
 
+
+
+sub STREAMDECK_DoInit($) {
+	my ($hash) = @_;
+	my $name = $hash->{NAME};
+	Log3 $name, 3, "STREAMDECK: $name Initialization";
 }
 
 
@@ -293,16 +341,7 @@ sub STREAMDECK_Attr($$$$) {
 	my ($command,$name,$attribute,$value) = @_;
 	my $hash = $defs{$name};
   
-	ATTRIBUTE_HANDLER: {
-		$attribute eq "brightness" and do {
-			my $datax = pack("H*", "0555aad101" . sprintf("%02X", $value). "0000000000000000000000");
-			syswrite($hash->{DIODev}, $datax);
-
-			Log3 $name, 5, "Set brightness to $value";
-			return undef;
-		};
-	};
-  
+	STREAMDECK_Brightness($hash, $value) if $attribute eq "brightness";  
 }
 
 
