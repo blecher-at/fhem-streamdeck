@@ -29,13 +29,16 @@ package main;
 use strict;
 use warnings;
 
+my @STREAMDECK_KEY_ImageAttributes = qw(rotate device icon color bg font text textsize textfill textstroke textgravity);
+
 sub STREAMDECK_KEY_Initialize($) {
 	my ($hash) = @_;
 
 	$hash->{DefFn}	= "STREAMDECK_KEY_Define";
 	$hash->{AttrFn}	= "STREAMDECK_KEY_Attr";
 	$hash->{NotifyFn} = "STREAMDECK_KEY_Notify";
-	$hash->{AttrList}	= "disable:0,1 text font image ". $readingFnAttributes;
+
+	$hash->{AttrList}	= join(" ", @STREAMDECK_KEY_ImageAttributes)." image disable:0,1 ". $readingFnAttributes;
 	$hash->{NotifyOrderPrefix} = "99-" # make sure notifies are called last
 }
 
@@ -132,7 +135,7 @@ sub STREAMDECK_KEY_SetImage($) {
 	my %parsedvalue = split /:|[ |]/,$value;
 	
 	# set other attributes to the hash as they were defined directly
-	foreach(qw(font text rotate)) {
+	foreach(@STREAMDECK_KEY_ImageAttributes) {
 		$parsedvalue{$_} = $attr{$name}{$_} unless defined $parsedvalue{$_};
 	}
 	
