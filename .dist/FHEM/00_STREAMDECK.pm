@@ -122,10 +122,7 @@ sub STREAMDECK_DoInit($$) {
 	#restore images after device reconnect
 	GP_ForallClients($hash, sub {
 		my $client = shift;
-
-		if(length($client->{helper}{LASTIMGDATA})) {
-			STREAMDECK_KEY_SendImage($client, $client->{helper}{LASTIMGDATA});
-		}
+		STREAMDECK_KEY_SetImage($client, undef);
 	});
 
 }
