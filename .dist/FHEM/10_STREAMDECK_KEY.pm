@@ -60,7 +60,8 @@ sub STREAMDECK_KEY_Define($$) {
 	$hash->{key} = $key;
 	$hash->{IODev} = $defs{$parentdevice};
 	$hash->{IODevName} = $parentdevice;
-	
+	$hash->{NOTIFYDEV} = $name; #set to ourselves, might be replaced by device
+
 	return undef;
 }
 
@@ -82,8 +83,9 @@ sub STREAMDECK_KEY_Notify {
 	my $name = $hash->{NAME};
 	my $devname = $dev->{NAME};
 	
-	return "" if !$hash->{notifydevice};
-	return "" if $devname ne $hash->{notifydevice};
+	return "" if $hash->{NOTIFYDEV} eq $name; #ignore updates from ourselves
+	return "" if !$hash->{NOTIFYDEV};
+	return "" if $devname ne $hash->{NOTIFYDEV};
 	
 	#Redraw on device state change
 	Log3 $name, 5, "STREAMDECK_KEY_Notify from $devname, updating image $name";
@@ -154,9 +156,9 @@ sub STREAMDECK_KEY_SetImage($) {
 	}
 
 	if ($parsedvalue{device}) {
-		# register notify
-		$hash->{notifydevice} = $parsedvalue{device};
-			
+		# register and enable notify
+		$hash->{NOTIFYDEV} = $parsedvalue{device};
+
 		# read status icon. retry if no icon exists for this device
 		my ($icon) = FW_dev2image($parsedvalue{device});
 		if(!$icon) {

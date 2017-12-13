@@ -124,7 +124,7 @@ sub STREAMDECK_Brightness($$) {
 	my $setfeaturemagic = 1074546694;
 	my $ret = ioctl($hash->{DIODev}, $setfeaturemagic, $datax);
 
-	Log3 $name, 5, "Set brightness to $value $ret";
+	Log3 $name, 5, "Set brightness to $value% rc:$ret";
 	return undef;
 }
 
