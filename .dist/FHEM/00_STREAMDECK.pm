@@ -188,10 +188,13 @@ sub STREAMDECK_CreateImage($$) {
 			my $svgfill = $v->{svgfill} || 'white'; #svgfill is default white because default bg is black
 			
 			$image->Set(size=>"720x720", background=>'transparent'); #import it larger, then resize
-			$image->Read(filename => $v->{iconPath});
+			my $ret = $image->Read(filename => $v->{iconPath});
+			Log3 $name, 3, "image reading $v->{iconPath} failed. rc=$ret" if $ret;
+			
 			$image->Opaque(color=>'black', fill=>$svgfill); #set the fill color by replacing black with it
 		} else {
-			$image->Read(filename => $v->{iconPath});
+			my $ret = $image->Read(filename => $v->{iconPath});
+			Log3 $name, 3, "image reading $v->{iconPath} failed. rc=$ret" if $ret;
 		}
 
 		# resize the image
