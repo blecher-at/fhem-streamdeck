@@ -196,7 +196,7 @@ sub STREAMDECK_KEY_SetImage($) {
 	$parsedvalue{rotate} = AttrVal($hash->{IODevName}, "rotate", 0) unless $parsedvalue{rotate};
 	
 	#Log3 $name, 5, "Setting image to $value = $parsedvalue{iconPath} $parsedvalue{bg}";
-	my $data = STREAMDECK_CreateImage(\%parsedvalue);
+	my $data = STREAMDECK_CreateImage($hash, \%parsedvalue);
 	STREAMDECK_SendImage($name, $hash->{IODev}, $key, $data);
 	
 	return undef;
