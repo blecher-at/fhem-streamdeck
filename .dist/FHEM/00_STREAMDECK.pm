@@ -154,7 +154,7 @@ sub STREAMDECK_Redraw($) {
 	# set black as default
 	my %parsedvalue = ();
 	$parsedvalue{bg} = "black";
-	my $data = STREAMDECK_CreateImage(\%parsedvalue);
+	my $data = STREAMDECK_CreateImage($hash, \%parsedvalue);
 	for (1..15) {
 		STREAMDECK_SendImage($name, $hash, $_, $data);
 	}
@@ -176,8 +176,9 @@ sub STREAMDECK_DoInit($) {
 }
 
 
-sub STREAMDECK_CreateImage($) {
-	my ($v) = @_;
+sub STREAMDECK_CreateImage($$) {
+	my ($hash, $v) = @_;
+	my $name = $hash->{NAME};
 	my $image = Image::Magick->new();
 	
 	if ($v->{iconPath}) {
@@ -212,7 +213,7 @@ sub STREAMDECK_CreateImage($) {
 			my $textgravity = $v->{textgravity} || 'south';
 			my $textfont = $v->{font};
 			
-			$image->Annotate(
+			my $ret = $image->Annotate(
 				text=>$v->{text},
 				antialias=>1,
 				gravity=>$textgravity, 
@@ -221,6 +222,8 @@ sub STREAMDECK_CreateImage($) {
 				fill=>$textfill, 
 				stroke=>$textstroke, 
 				x=>0, y=>0);
+			Log3 $name, 3, "image annotate rc=$ret" if $ret;
+				
 			$image->Crop(geometry => "72x72", x=>0, y=>0);
 		}	
 	$image->Rotate($v->{rotate}) if $v->{rotate};
