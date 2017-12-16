@@ -162,7 +162,7 @@ sub STREAMDECK_Redraw($) {
 	#restore images after device reconnect
 	GP_ForallClients($hash, sub {
 		my $client = shift;
-		STREAMDECK_KEY_SetImage($client, undef);
+		STREAMDECK_KEY_SetImage($client);
 	});
 	
 }
