@@ -122,7 +122,7 @@ sub STREAMDECK_Brightness($$) {
 	$hash->{brightnesslevel} = $value;
 	my $datax = pack("H*", "0555aad101" . sprintf("%02X", $value). "00"x11);
 	my $setfeaturemagic = 1074546694;
-	my $ret = ioctl($hash->{DIODev}, $setfeaturemagic, $datax);
+	my $ret = ioctl($hash->{DIODev}, $setfeaturemagic, $datax) if $hash->{DIODev};
 
 	Log3 $name, 5, "Set brightness to $value% rc:$ret";
 	return undef;
@@ -245,7 +245,7 @@ sub STREAMDECK_SendImage($$$$) {
 	my ($name, $iodev, $key, $data) = @_;
 
 	if(length($data) != 15552) {
-		Log3 $name, 3, "Illegal image data, length=".length($data);
+		Log3 $name, 3, "invalid image data created for $name, length=".length($data);
 		return;
 	}
 	
