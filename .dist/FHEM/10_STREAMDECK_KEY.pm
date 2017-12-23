@@ -29,7 +29,7 @@ package main;
 use strict;
 use warnings;
 
-my @STREAMDECK_KEY_ImageAttributes = qw(rotate device icon color bg font text textsize textfill textstroke textgravity);
+my @STREAMDECK_KEY_ImageAttributes = qw(rotate device icon color bg font longpressinterval svgfill text textsize textfill textstroke textgravity);
 
 sub STREAMDECK_KEY_Initialize($) {
 	my ($hash) = @_;
@@ -103,21 +103,25 @@ sub STREAMDECK_KEY_PRESSED($$) {
 	readingsBulkUpdate($hash, "pressed", $value);
 	readingsBulkUpdate($hash, "lastpressed", 1) if $value;
 	readingsBulkUpdateIfChanged($hash, "state", $stringvalue);
-	readingsEndUpdate($hash, 1);
 	
 	if ( $value == 1 ) {
-		my $lngpressInterval = AttrVal($hash->{NAME}, "longpressinterval", "2");
-		InternalTimer(gettimeofday() + $lngpressInterval, 'STREAMDECK_KEY_longpress', $hash, 0);
+		my $longpressInterval = AttrVal($hash->{NAME}, "longpressinterval", "2");
+		InternalTimer(gettimeofday() + $longpressInterval, 'STREAMDECK_KEY_longpress', $hash, 0);
 	} else {
 		RemoveInternalTimer('STREAMDECK_KEY_longpress');
+		readingsBulkUpdate($hash, 'longpresstime', 0);
 	}
+
+	readingsEndUpdate($hash, 1);
 
 }
 
 sub STREAMDECK_KEY_longpress($) {
 	my ($hash) = @_;
 	my $name = $hash->{NAME};
+	
 	my $pressed = ReadingsVal($name, "pressed", 0);
+#	my $longpresstime = ReadingsVal($name, "longpresstime", 0) + 1;
 	
 	if ($pressed) {
 		Log3 $name, 5, "Setting longpress";
@@ -142,11 +146,12 @@ sub STREAMDECK_KEY_SetImage($) {
 	}
 	
 	# magic parse text 
-	if ($parsedvalue{text}) {
-		#my $st = ;
-		(undef, my $magictext) = ReplaceSetMagic($hash, 1, $parsedvalue{text});
-		Log3 $name, 5, "ReplaceSetMagic text value $parsedvalue{text} to '$magictext'";
-		$parsedvalue{text} = $magictext;
+	foreach my $key (keys %parsedvalue) { 
+		if($parsedvalue{$key}) {
+			(undef, my $magic) = ReplaceSetMagic($hash, 1, $parsedvalue{$key});
+			Log3 $name, 5, "ReplaceSetMagic $key: value ".$parsedvalue{$key}." to '$magic'";
+			$parsedvalue{$key} = $magic;
+		}
 	}
 		
 	my $iconsloaded = FW_iconName("on.png");
