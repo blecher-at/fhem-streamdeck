@@ -164,27 +164,23 @@ sub STREAMDECK_KEY_SetImage($) {
 		# register and enable notify
 		$hash->{NOTIFYDEV} = $parsedvalue{device};
 
-		# read status icon. retry if no icon exists for this device
+		# read status icon. fallback to default if no icon exists for this device
 		my ($icon) = FW_dev2image($parsedvalue{device});
 		if(!$icon) {
-			#FW_answerCall(""); # workaround: trigger fake fhemweb request to initialize icons
-			#InternalTimer(gettimeofday() + 5, 'STREAMDECK_KEY_SetImage', $hash, 1);
-			my $d = $defs{$parsedvalue{device}};
-			my $state = $d->{STATE};
-			
 			# default icon when state does not match any icon is the defined icon
 			$icon = $parsedvalue{icon};
 			$icon = "toggle.png" if !$icon; # use toggle if no fallback icon is defined
+			my $state = Value($parsedvalue{device});
 			Log3 $name, 5, "Setting $name image failed. no icon found for ".$parsedvalue{device}.": $state, fallback to $icon";
 		}			
 		$parsedvalue{icon} = $icon;
-
 	}
 	
 	if ($parsedvalue{icon}) {
-		my $icon = $parsedvalue{icon};
+		my ($icon, $color) = split '@', $parsedvalue{icon};
 		my $iconPath = $attr{global}{modpath}."/www/images/".FW_iconPath(FW_iconName($icon));
 		$parsedvalue{iconPath} = $iconPath;
+		$parsedvalue{svgfill} = $color if $color;
 	}
 	
 	if ($parsedvalue{color}) {
@@ -200,7 +196,7 @@ sub STREAMDECK_KEY_SetImage($) {
 	
 	$parsedvalue{rotate} = AttrVal($hash->{IODevName}, "rotate", 0) unless $parsedvalue{rotate};
 	
-	#Log3 $name, 5, "Setting image to $value = $parsedvalue{iconPath} $parsedvalue{bg}";
+	Log3 $name, 5, "Setting image to $value = $parsedvalue{iconPath} $parsedvalue{bg}";
 	my $data = STREAMDECK_CreateImage($hash, \%parsedvalue);
 	STREAMDECK_SendImage($name, $hash->{IODev}, $key, $data);
 	
