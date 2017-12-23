@@ -30,8 +30,8 @@ use strict;
 use warnings;
 use GPUtils qw(:all);
 use Image::Magick;
-use threads;
 use DevIo;
+use Fcntl ':flock'; 
 
 ######################################################################################
 sub STREAMDECK_Read($);
@@ -248,7 +248,8 @@ sub STREAMDECK_SendImage($$$$) {
 		Log3 $name, 3, "invalid image data created for $name, length=".length($data);
 		return;
 	}
-	
+	Log3 $name, 5, "Setting $name image...";
+
 	# Store the last image created, and simply restore it in case the device was unplugged.
 	#$hash->{helper}{LASTIMGDATA} = $data;
 	
@@ -267,21 +268,30 @@ sub STREAMDECK_SendImage($$$$) {
 	my $datax = $header1 . substr($data, 0, $data1_maxlen) . substr($filler, 0, 8191 - $header1_len - $data1_maxlen).
 				$header2 . substr($data, $data1_maxlen)    . substr($filler, 0, 8191 - $header2_len - $data2_maxlen);
 
-	Log3 $name, 9, "Setting $name image...";
 	
 	# this hack is needed for the images not being garbled if the first byte of syswrite is 0.
 	substr($datax, 4096, 1) = chr(0x1) if ord(substr($datax, 4096, 1)) == 0;
 	substr($datax, 8191+4096, 1) = chr(0x1) if ord(substr($datax, 8191+4096, 1)) == 0;
 	
 	
+	# check readyness
+	#STREAMDECK_Ready($iodev);
+	#my $ret = DevIo_OpenDev($iodev, 1, undef);
+	my $openresult = open (my $file, ">", $iodev->{file});
+
 	# Need to send in chunks of not more than 4k
-	if($iodev->{DIODev}) {
-		syswrite($iodev->{DIODev}, $datax, 4096, 0);  
-		syswrite($iodev->{DIODev}, $datax, 4095, 4096);
-		syswrite($iodev->{DIODev}, $datax, 4096, 8191);
-		syswrite($iodev->{DIODev}, $datax, 4095, 8191+4096);
+	if($openresult) {
+		flock($file, LOCK_EX) or die "Could not lock '$file' - $!";
+
+		syswrite($file, $datax, 4096, 0);  
+		syswrite($file, $datax, 4095, 4096);
+		syswrite($file, $datax, 4096, 8191);
+		syswrite($file, $datax, 4095, 8191+4096);
+	} else {
+		Log3 $name, 3, "IODEV not open! not setting image for $name";
 	}
-	Log3 $name, 9, "Setting image... done";
+	close $file;
+	Log3 $name, 5, "Setting image... done";
 }
 
 

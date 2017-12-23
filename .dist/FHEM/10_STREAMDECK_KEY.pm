@@ -29,7 +29,7 @@ package main;
 use strict;
 use warnings;
 
-my @STREAMDECK_KEY_ImageAttributes = qw(rotate device icon color bg font longpressinterval svgfill text textsize textfill textstroke textgravity);
+my @STREAMDECK_KEY_ImageAttributes = qw(rotate device devstatecolorattr icon color bg font longpressinterval svgfill text textsize textfill textstroke textgravity);
 
 sub STREAMDECK_KEY_Initialize($) {
 	my ($hash) = @_;
@@ -39,7 +39,7 @@ sub STREAMDECK_KEY_Initialize($) {
 	$hash->{NotifyFn} = "STREAMDECK_KEY_Notify";
 
 	$hash->{AttrList}	= join(" ", @STREAMDECK_KEY_ImageAttributes)." image disable:0,1 ". $readingFnAttributes;
-	$hash->{NotifyOrderPrefix} = "99-" # make sure notifies are called last
+	$hash->{NotifyOrderPrefix} = "1-" # make sure notifies are called first, image is updated async anyway
 }
 
 sub STREAMDECK_KEY_Define($$) {
@@ -71,6 +71,23 @@ sub STREAMDECK_KEY_Attr($$$$) {
 	my $iconPath = "";
 	Log3 $name, 5, "Setting ATTR $name $command $attribute $value";
 
+	# get image attr from device and parse
+	$attr{$name}{$attribute} = $value; 
+	
+	my %parsedvalue = ();
+	
+	if($attr{$name}{image}) {
+		%parsedvalue = split /:|[ |]/,$attr{$name}{image};
+	}
+	
+	# set other attributes to the hash as they were defined directly
+	foreach(@STREAMDECK_KEY_ImageAttributes) {
+		$parsedvalue{$_} = $attr{$name}{$_} if defined $attr{$name}{$_};
+	}
+	
+	$hash->{NOTIFYDEV} = $parsedvalue{device} if ($parsedvalue{device});
+	$hash->{parsedattr} = {%parsedvalue};
+
 	# if attr is set after device was opened, update
 	RemoveInternalTimer($hash, "STREAMDECK_KEY_SetImage");
 	InternalTimer(0, "STREAMDECK_KEY_SetImage", $hash) if $hash->{IODev}{opened};
@@ -82,14 +99,17 @@ sub STREAMDECK_KEY_Notify {
 	my ($hash, $dev) = @_;
 	my $name = $hash->{NAME};
 	my $devname = $dev->{NAME};
+	my $notifydev = $hash->{NOTIFYDEV};
 	
 	return "" if $hash->{NOTIFYDEV} eq $name; #ignore updates from ourselves
 	return "" if !$hash->{NOTIFYDEV};
 	return "" if $devname ne $hash->{NOTIFYDEV};
 	
+	my $state = Value($devname);
 	#Redraw on device state change
-	Log3 $name, 5, "STREAMDECK_KEY_Notify from $devname, updating image $name";
+	Log3 $name, 5, "STREAMDECK_KEY_Notify from $devname, updating image for $name:$state";
 	STREAMDECK_KEY_SetImage($hash);
+	return;
 }
 
 sub STREAMDECK_KEY_PRESSED($$) {
@@ -133,17 +153,21 @@ sub STREAMDECK_KEY_SetImage($) {
 	my ($hash) = @_;
 	my $name = $hash->{NAME};
 	my $key = $hash->{key};
-
-    RemoveInternalTimer($hash, 'STREAMDECK_KEY_SetImage');
-
-	# get image attr from device and parse
-	my $value = $attr{$name}{image}; 
-	my %parsedvalue = split /:|[ |]/,$value;
 	
-	# set other attributes to the hash as they were defined directly
-	foreach(@STREAMDECK_KEY_ImageAttributes) {
-		$parsedvalue{$_} = $attr{$name}{$_} unless defined $parsedvalue{$_};
-	}
+    RemoveInternalTimer($hash, 'STREAMDECK_KEY_SetImage');
+	Log3 $name, 5, "Starting STREAMDECK_KEY_SetImage_Blocking $name";
+	BlockingCall("STREAMDECK_KEY_SetImage_Blocking", $name);
+}
+
+# image generation takes up to a few seconds,
+# we moved this to BlockingCall for better performance. 
+sub STREAMDECK_KEY_SetImage_Blocking($) {
+	my ($name) = @_;
+	my $hash = $defs{$name};
+	my $key = $hash->{key};
+
+	Log3 $name, 5, "STREAMDECK_KEY_SetImage_Blocking ".Dumper(\$hash);
+	my %parsedvalue = %{$hash->{parsedattr}};
 	
 	# magic parse text 
 	foreach my $key (keys %parsedvalue) { 
@@ -161,9 +185,6 @@ sub STREAMDECK_KEY_SetImage($) {
 	}
 
 	if ($parsedvalue{device}) {
-		# register and enable notify
-		$hash->{NOTIFYDEV} = $parsedvalue{device};
-
 		# read status icon. fallback to default if no icon exists for this device
 		my ($icon) = FW_dev2image($parsedvalue{device});
 		if(!$icon) {
@@ -176,11 +197,19 @@ sub STREAMDECK_KEY_SetImage($) {
 		$parsedvalue{icon} = $icon;
 	}
 	
+	
+	
 	if ($parsedvalue{icon}) {
 		my ($icon, $color) = split '@', $parsedvalue{icon};
 		my $iconPath = $attr{global}{modpath}."/www/images/".FW_iconPath(FW_iconName($icon));
 		$parsedvalue{iconPath} = $iconPath;
-		$parsedvalue{svgfill} = $color if $color;
+
+		# devstatecolorattr contains the attribute that is set by the color of the device state
+		# default is 'svgfill'. the other reasonable attribute is 'bg'
+		my $colorattr = $parsedvalue{devstatecolorattr} || 'svgfill';
+		if ($color and !$parsedvalue{$colorattr}) {
+			$parsedvalue{$colorattr} = $color;
+		}
 	}
 	
 	if ($parsedvalue{color}) {
@@ -196,7 +225,7 @@ sub STREAMDECK_KEY_SetImage($) {
 	
 	$parsedvalue{rotate} = AttrVal($hash->{IODevName}, "rotate", 0) unless $parsedvalue{rotate};
 	
-	Log3 $name, 5, "Setting image to $value = $parsedvalue{iconPath} $parsedvalue{bg}";
+	Log3 $name, 5, "Setting image to $parsedvalue{iconPath} $parsedvalue{bg}";
 	my $data = STREAMDECK_CreateImage($hash, \%parsedvalue);
 	STREAMDECK_SendImage($name, $hash->{IODev}, $key, $data);
 	
