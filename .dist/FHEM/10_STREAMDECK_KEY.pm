@@ -28,6 +28,8 @@ package main;
 
 use strict;
 use warnings;
+use Blocking;
+#use Dumper;
 
 my @STREAMDECK_KEY_ImageAttributes = qw(rotate device devstatecolorattr icon color bg font longpressinterval svgfill text textsize textfill textstroke textgravity);
 
@@ -120,8 +122,8 @@ sub STREAMDECK_KEY_PRESSED($$) {
 	#Log3 $name, 5, "Setting state $name $value";
 	
 	readingsBeginUpdate($hash);
-	readingsBulkUpdate($hash, "pressed", $value);
-	readingsBulkUpdate($hash, "lastpressed", 1) if $value;
+	#readingsBulkUpdate($hash, "pressed", $value);
+	#readingsBulkUpdate($hash, "lastpressed", 1) if $value;
 	readingsBulkUpdateIfChanged($hash, "state", $stringvalue);
 	
 	if ( $value == 1 ) {
@@ -129,7 +131,7 @@ sub STREAMDECK_KEY_PRESSED($$) {
 		InternalTimer(gettimeofday() + $longpressInterval, 'STREAMDECK_KEY_longpress', $hash, 0);
 	} else {
 		RemoveInternalTimer('STREAMDECK_KEY_longpress');
-		readingsBulkUpdate($hash, 'longpresstime', 0);
+		#readingsBulkUpdate($hash, 'longpresstime', 0);
 	}
 
 	readingsEndUpdate($hash, 1);
@@ -166,7 +168,7 @@ sub STREAMDECK_KEY_SetImage_Blocking($) {
 	my $hash = $defs{$name};
 	my $key = $hash->{key};
 
-	Log3 $name, 5, "STREAMDECK_KEY_SetImage_Blocking ".Dumper(\$hash);
+	#Log3 $name, 5, "STREAMDECK_KEY_SetImage_Blocking ".Dumper(\$hash);
 	my %parsedvalue = %{$hash->{parsedattr}};
 	
 	# magic parse text 
