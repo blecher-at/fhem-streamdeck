@@ -176,6 +176,8 @@ sub STREAMDECK_DoInit($) {
 }
 
 
+
+
 sub STREAMDECK_CreateImage($$) {
 	my ($hash, $v) = @_;
 	my $name = $hash->{NAME};
@@ -183,18 +185,22 @@ sub STREAMDECK_CreateImage($$) {
 	
 	if ($v->{iconPath}) {
 		my $issvg = $v->{iconPath} =~ ".svg";
+		my $svgfill = $v->{svgfill} || 'white'; #svgfill is default white because default bg is black
 
 		if($issvg) {
-			my $svgfill = $v->{svgfill} || 'white'; #svgfill is default white because default bg is black
-			
 			$image->Set(size=>"720x720", background=>'transparent'); #import it larger, then resize
-			my $ret = $image->Read(filename => $v->{iconPath});
-			Log3 $name, 3, "image reading $v->{iconPath} failed. rc=$ret" if $ret;
-			
+		}
+		
+		# imagemagicks read directly from file hangs in forked process.
+		Log3 $name, 5, "reading $v->{iconPath} ...";
+		open(IMAGE, $v->{iconPath});
+		my $ret = $image->Read(file=>\*IMAGE);
+		close(IMAGE);
+
+		Log3 $name, 3, "image reading $v->{iconPath} failed. rc=$ret" if $ret;
+
+		if($issvg) {
 			$image->Opaque(color=>'black', fill=>$svgfill); #set the fill color by replacing black with it
-		} else {
-			my $ret = $image->Read(filename => $v->{iconPath});
-			Log3 $name, 3, "image reading $v->{iconPath} failed. rc=$ret" if $ret;
 		}
 
 		# resize the image
