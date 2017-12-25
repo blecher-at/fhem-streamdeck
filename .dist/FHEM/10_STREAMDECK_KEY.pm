@@ -179,12 +179,6 @@ sub STREAMDECK_KEY_SetImage_Blocking($) {
 			$parsedvalue{$key} = $magic;
 		}
 	}
-		
-	my $iconsloaded = FW_iconName("on.png");
-	if (!$iconsloaded) {
-		Log3 $name, 3, "Icons not yet initialized. triggering fhemweb init";
-		FW_answerCall(undef); # workaround: trigger fake fhemweb request to initialize icons
-	}
 
 	if ($parsedvalue{device}) {
 		# read status icon. fallback to default if no icon exists for this device
@@ -233,10 +227,6 @@ sub STREAMDECK_KEY_SetImage_Blocking($) {
 	
 	return undef;
 }
-
-
-
-
 
 1;
 

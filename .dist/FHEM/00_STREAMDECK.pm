@@ -32,7 +32,9 @@ use GPUtils qw(:all);
 use Image::Magick;
 use DevIo;
 use Fcntl ':flock'; 
-
+use Digest::SHA qw(sha1_hex);
+use Data::Dumper;
+ 
 ######################################################################################
 sub STREAMDECK_Read($);
 sub STREAMDECK_Ready($);
@@ -151,10 +153,8 @@ sub STREAMDECK_Redraw($) {
 	my ($hash) = @_;
 	my $name = $hash->{NAME};
 
-	# set black as default
-	my %parsedvalue = ();
-	$parsedvalue{bg} = "black";
-	my $data = STREAMDECK_CreateImage($hash, \%parsedvalue);
+	# black image is default
+	my $data = "\0" x 15552;
 	for (1..15) {
 		STREAMDECK_SendImage($name, $hash, $_, $data);
 	}
@@ -167,12 +167,16 @@ sub STREAMDECK_Redraw($) {
 	
 }
 
-
-
 sub STREAMDECK_DoInit($) {
 	my ($hash) = @_;
 	my $name = $hash->{NAME};
 	Log3 $name, 3, "STREAMDECK: $name Initialization";
+	
+	my $iconsloaded = FW_iconName("on.png");
+	if (!$iconsloaded) {
+		Log3 $name, 3, "Icons not yet initialized. triggering fhemweb init";
+		FW_answerCall(undef); # workaround: trigger fake fhemweb request to initialize icons. used in key image building
+	}
 }
 
 
@@ -181,8 +185,27 @@ sub STREAMDECK_DoInit($) {
 sub STREAMDECK_CreateImage($$) {
 	my ($hash, $v) = @_;
 	my $name = $hash->{NAME};
-	my $image = Image::Magick->new();
 	
+	my $image = Image::Magick->new();
+	my $ret = $image->Read(STREAMDECK_GenCacheFilename($hash, $v));
+	if(!$ret) {
+		Log3 $name, 5, "image $name cache hit";
+		my @pixels = $image->GetPixels(width => 72, height => 72, map => 'BGR');
+		my $bitmapdata = join('', map { pack("H", sprintf("%04x", $_)) } @pixels);
+		undef $image; #cleanup
+		return $bitmapdata;
+	}
+	Log3 $name, 5, "image $name cache miss";
+	
+#	my $cachedBitmapData = STREAMDECK_KEY_ImageCache_Read($hash, \%parsedvalue);
+#	if($cachedBitmapData) {
+#	my @pixels = $image->GetPixels(width => 72, height => 72, map => 'BGR');
+#
+#	my $bitmapdata = join('', map { pack("H", sprintf("%04x", $_)) } @pixels);
+#		return $cachedBitmapData;
+	#}
+	
+	#my $image = Image::Magick->new();
 	if ($v->{iconPath}) {
 		my $issvg = $v->{iconPath} =~ ".svg";
 		my $svgfill = $v->{svgfill} || 'white'; #svgfill is default white because default bg is black
@@ -193,9 +216,7 @@ sub STREAMDECK_CreateImage($$) {
 		
 		# imagemagicks read directly from file hangs in forked process.
 		Log3 $name, 5, "reading $v->{iconPath} ...";
-		open(IMAGE, $v->{iconPath});
-		my $ret = $image->Read(file=>\*IMAGE);
-		close(IMAGE);
+		my $ret = $image->Read($v->{iconPath});
 
 		Log3 $name, 3, "image reading $v->{iconPath} failed. rc=$ret" if $ret;
 
@@ -237,15 +258,24 @@ sub STREAMDECK_CreateImage($$) {
 		}	
 	$image->Rotate($v->{rotate}) if $v->{rotate};
 	$image->Flop(); #image is expected mirrored on streamdeck
-	
 	my @pixels = $image->GetPixels(width => 72, height => 72, map => 'BGR');
 
 	my $bitmapdata = join('', map { pack("H", sprintf("%04x", $_)) } @pixels);
-	
+	$image->Write(STREAMDECK_GenCacheFilename($hash, $v));
+  
 	undef $image; #cleanup
 	return $bitmapdata;
 }
 
+sub STREAMDECK_GenCacheFilename($$) {
+	my ($hash, $v) = @_;
+	my $name = $hash->{NAME};
+	my $value = join("|", map{ $_.":".$v->{$_} } sort keys %{$v});
+	my $id = $name."_".sha1_hex($value);
+	Log3 $name, 5, "Generated hash $id for $value";
+
+	return "/tmp/streamdeck.cache.$id.bmp";
+}
 
 sub STREAMDECK_SendImage($$$$) {
 	my ($name, $iodev, $key, $data) = @_;
@@ -278,29 +308,25 @@ sub STREAMDECK_SendImage($$$$) {
 	# this hack is needed for the images not being garbled if the first byte of syswrite is 0.
 	substr($datax, 4096, 1) = chr(0x1) if ord(substr($datax, 4096, 1)) == 0;
 	substr($datax, 8191+4096, 1) = chr(0x1) if ord(substr($datax, 8191+4096, 1)) == 0;
-	
-	
+		
 	# check readyness
-	#STREAMDECK_Ready($iodev);
-	#my $ret = DevIo_OpenDev($iodev, 1, undef);
 	my $openresult = open (my $file, ">", $iodev->{file});
 
 	# Need to send in chunks of not more than 4k
 	if($openresult) {
 		flock($file, LOCK_EX) or die "Could not lock '$file' - $!";
+		Log3 $name, 5, "Writing $name image to streamdeck key $key...";
 
 		syswrite($file, $datax, 4096, 0);  
 		syswrite($file, $datax, 4095, 4096);
 		syswrite($file, $datax, 4096, 8191);
 		syswrite($file, $datax, 4095, 8191+4096);
+		close $file;
+		Log3 $name, 5, "Setting image... done";
 	} else {
 		Log3 $name, 3, "IODEV not open! not setting image for $name";
 	}
-	close $file;
-	Log3 $name, 5, "Setting image... done";
 }
-
-
 
 # called from the global loop, when the select for hash->{FD} reports data
 sub STREAMDECK_Read($) {
