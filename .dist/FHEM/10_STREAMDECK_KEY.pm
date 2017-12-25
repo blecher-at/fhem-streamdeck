@@ -126,11 +126,13 @@ sub STREAMDECK_KEY_PRESSED($$) {
 	readingsBulkUpdateIfChanged($hash, 'value', $value);
 	
 	if ( $value == 1 ) {
-		readingsBulkUpdate($hash, 'longpresstime', 0);
 		my $longpressInterval = AttrVal($hash->{NAME}, 'longpressinterval', 1);
-		InternalTimer(gettimeofday() + $longpressInterval, 'STREAMDECK_KEY_longpress', $hash, 0);
+		if($longpressInterval) {
+			InternalTimer(gettimeofday() + $longpressInterval, 'STREAMDECK_KEY_longpress', $hash, 0);
+		}
 	} else {
-		RemoveInternalTimer('STREAMDECK_KEY_longpress');
+		RemoveInternalTimer($hash, 'STREAMDECK_KEY_longpress');
+		readingsBulkUpdate($hash, 'longpresstime', 0);
 	}
 
 	readingsEndUpdate($hash, 1);
