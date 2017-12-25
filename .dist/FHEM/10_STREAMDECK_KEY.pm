@@ -116,22 +116,21 @@ sub STREAMDECK_KEY_Notify {
 
 sub STREAMDECK_KEY_PRESSED($$) {
 	my ($hash, $value) = @_;
-	my $stringvalue = $value ? "pressed" : "released";
+	my $stringvalue = $value ? 'pressed' : 'released';
 	my $name = $hash->{NAME};
 	
 	#Log3 $name, 5, "Setting state $name $value";
 	
 	readingsBeginUpdate($hash);
-	#readingsBulkUpdate($hash, "pressed", $value);
-	#readingsBulkUpdate($hash, "lastpressed", 1) if $value;
-	readingsBulkUpdateIfChanged($hash, "state", $stringvalue);
+	readingsBulkUpdateIfChanged($hash, 'state', $stringvalue);
+	readingsBulkUpdateIfChanged($hash, 'value', $value);
 	
 	if ( $value == 1 ) {
-		my $longpressInterval = AttrVal($hash->{NAME}, "longpressinterval", "2");
+		readingsBulkUpdate($hash, 'longpresstime', 0);
+		my $longpressInterval = AttrVal($hash->{NAME}, 'longpressinterval', 1);
 		InternalTimer(gettimeofday() + $longpressInterval, 'STREAMDECK_KEY_longpress', $hash, 0);
 	} else {
 		RemoveInternalTimer('STREAMDECK_KEY_longpress');
-		#readingsBulkUpdate($hash, 'longpresstime', 0);
 	}
 
 	readingsEndUpdate($hash, 1);
@@ -142,12 +141,18 @@ sub STREAMDECK_KEY_longpress($) {
 	my ($hash) = @_;
 	my $name = $hash->{NAME};
 	
-	my $pressed = ReadingsVal($name, "pressed", 0);
-#	my $longpresstime = ReadingsVal($name, "longpresstime", 0) + 1;
+	my $pressed = ReadingsVal($name, 'value', 0);
 	
 	if ($pressed) {
+		my $longpressInterval = AttrVal($hash->{NAME}, 'longpressinterval', 1);
+		my $longpresstime = ReadingsVal($name, 'longpresstime', 0) + 1;
 		Log3 $name, 5, "Setting longpress";
-		readingsSingleUpdate($hash, 'state', 'longpress', 1);
+		readingsBeginUpdate($hash);
+		readingsBulkUpdateIfChanged($hash, 'longpresstime', $longpresstime, 1);
+		readingsBulkUpdateIfChanged($hash, 'state', 'longpress '.$longpresstime, 1);
+		readingsEndUpdate($hash, 1);
+		
+		InternalTimer(gettimeofday() + $longpressInterval, 'STREAMDECK_KEY_longpress', $hash, 0);
 	}
 }
 

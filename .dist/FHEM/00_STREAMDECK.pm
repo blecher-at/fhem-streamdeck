@@ -33,7 +33,6 @@ use Image::Magick;
 use DevIo;
 use Fcntl ':flock'; 
 use Digest::SHA qw(sha1_hex);
-use Data::Dumper;
  
 ######################################################################################
 sub STREAMDECK_Read($);
