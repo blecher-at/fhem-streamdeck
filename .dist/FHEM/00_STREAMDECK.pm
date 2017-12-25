@@ -72,6 +72,7 @@ sub STREAMDECK_Define($$)
 	$hash->{NAME} = $name;
 	$hash->{file} = $dev;
 	$hash->{DeviceName} = "$dev\@directio";
+	$hash->{page} = "root";
 	
 	DevIo_CloseDev($hash);
 	my $ret = DevIo_OpenDev($hash, 1, "STREAMDECK_DoInit");
@@ -99,12 +100,23 @@ sub STREAMDECK_Set($@) {
 	my $cmd = $a[1];
 	
 	my @sets = qw(on off toggle redraw);
-	return 'Unknown argument ' . $cmd . ', choose one of ' . join(' ', @sets) unless $cmd ~~ @sets;
+
+	# create a list of pages set on keys
+	my %pages = qw(root 1);
+	GP_ForallClients($hash, sub {
+		my $client = shift;
+		$pages{AttrVal($client->{NAME}, 'page', 'root')} = 1;
+	});
+	
+	my @uniqpages = keys %pages;
+	
+	return 'Unknown argument ' . $cmd . ', choose one of ' . join(' ', @sets).' page:'.join(',', @uniqpages) unless $cmd ~~ @sets or $cmd eq "page";
 
 	STREAMDECK_Brightness_Toggle($hash) if($cmd eq "toggle");
 	STREAMDECK_Brightness($hash, $attr{$name}{brightness}) if($cmd eq "on");
 	STREAMDECK_Brightness($hash, 0) if($cmd eq "off");
 	STREAMDECK_Redraw($hash) if $cmd eq "redraw";
+	STREAMDECK_Level($hash, $a[2]) if $cmd eq "page";
 	
 }
 
@@ -152,18 +164,29 @@ sub STREAMDECK_Redraw($) {
 	my ($hash) = @_;
 	my $name = $hash->{NAME};
 
-	# black image is default
-	my $data = "\0" x 15552;
-	for (1..15) {
-		STREAMDECK_SendImage($name, $hash, $_, $data);
-	}
+	my %wasset;
 	
 	#restore images after device reconnect
 	GP_ForallClients($hash, sub {
 		my $client = shift;
-		STREAMDECK_KEY_SetImage($client);
+		$wasset{$client->{key}} = 1 if STREAMDECK_KEY_SetImage($client);
 	});
 	
+	# make all others black
+	for (1..15) {
+		STREAMDECK_SendImage($name, $hash, $_, "\0" x 15552) unless $wasset{$_};
+	}
+	
+	
+}
+
+
+sub STREAMDECK_Level($$) {
+	my ($hash, $page) = @_;
+	my $name = $hash->{NAME};
+
+	$hash->{page} = $page;
+	STREAMDECK_Redraw($hash);
 }
 
 sub STREAMDECK_DoInit($) {
@@ -177,9 +200,6 @@ sub STREAMDECK_DoInit($) {
 		FW_answerCall(undef); # workaround: trigger fake fhemweb request to initialize icons. used in key image building
 	}
 }
-
-
-
 
 sub STREAMDECK_CreateImage($$) {
 	my ($hash, $v) = @_;
@@ -362,7 +382,10 @@ sub STREAMDECK_Read($) {
 		my $client = shift;
 		my $clientKey = $client->{key};
 		my $value = $values[$clientKey -1];
-		STREAMDECK_KEY_PRESSED($client, $value);
+		
+		if(AttrVal($client->{NAME}, 'page', 'root') eq $hash->{page}) {
+			STREAMDECK_KEY_PRESSED($client, $value);
+		}
 	});
 
 	Log3 $name, 5,"STREAMDECK_Read - END";

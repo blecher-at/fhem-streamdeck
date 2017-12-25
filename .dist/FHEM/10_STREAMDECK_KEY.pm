@@ -40,7 +40,7 @@ sub STREAMDECK_KEY_Initialize($) {
 	$hash->{AttrFn}	= "STREAMDECK_KEY_Attr";
 	$hash->{NotifyFn} = "STREAMDECK_KEY_Notify";
 
-	$hash->{AttrList}	= join(" ", @STREAMDECK_KEY_ImageAttributes)." image disable:0,1 ". $readingFnAttributes;
+	$hash->{AttrList}	= join(" ", @STREAMDECK_KEY_ImageAttributes)." image page disable:0,1 ". $readingFnAttributes;
 	$hash->{NotifyOrderPrefix} = "1-" # make sure notifies are called first, image is updated async anyway
 }
 
@@ -63,7 +63,7 @@ sub STREAMDECK_KEY_Define($$) {
 	$hash->{IODev} = $defs{$parentdevice};
 	$hash->{IODevName} = $parentdevice;
 	$hash->{NOTIFYDEV} = $name; #set to ourselves, might be replaced by device
-
+	
 	return undef;
 }
 
@@ -163,9 +163,13 @@ sub STREAMDECK_KEY_SetImage($) {
 	my $name = $hash->{NAME};
 	my $key = $hash->{key};
 	
-    RemoveInternalTimer($hash, 'STREAMDECK_KEY_SetImage');
-	Log3 $name, 5, "Starting STREAMDECK_KEY_SetImage_Blocking $name";
-	BlockingCall("STREAMDECK_KEY_SetImage_Blocking", $name);
+	if(AttrVal($name, 'page', 'root') eq $hash->{IODev}{page}) {
+		RemoveInternalTimer($hash, 'STREAMDECK_KEY_SetImage');
+		Log3 $name, 5, "Starting STREAMDECK_KEY_SetImage_Blocking $name";
+		BlockingCall("STREAMDECK_KEY_SetImage_Blocking", $name);
+		return 1;
+	}
+	return 0;
 }
 
 # image generation takes up to a few seconds,
