@@ -207,7 +207,7 @@ sub STREAMDECK_CreateImage($$) {
 	my $name = $hash->{NAME};
 	
 	my $image = Image::Magick->new();
-	my $ret = $image->Read(STREAMDECK_GenCacheFilename($hash, $v));
+	my $ret = $image->Read(STREAMDECK_GenCacheFilename($hash, $v, 'raw'));
 	if(!$ret) {
 		Log3 $name, 5, "image $name cache hit";
 		my @pixels = $image->GetPixels(width => 72, height => 72, map => 'BGR');
@@ -223,16 +223,23 @@ sub STREAMDECK_CreateImage($$) {
 
 		if($issvg) {
 			$image->Set(size=>"720x720", background=>'transparent'); #import it larger, then resize
-		}
-		
-		# imagemagicks read directly from file hangs in forked process.
-		Log3 $name, 5, "reading $v->{iconPath} ...";
-		my $ret = $image->Read($v->{iconPath});
+			
+			# read file and replace fill into tempfile
+			my $svgfillfile = STREAMDECK_GenCacheFilename($hash, $v, 'svg');
+			open ORIGINALIMAGE, '<', $v->{iconPath};		
+			open TMP, '>', $svgfillfile;
+			
+			while(<ORIGINALIMAGE>) {
+				$_ =~ s/fill="#000000"/fill="$svgfill"/g;
+				$_ =~ s/fill:#000000/fill:$svgfill/g;
+				print TMP $_;
+			}
+			close ORIGINALIMAGE;
+			close TMP;
 
-		Log3 $name, 3, "image reading $v->{iconPath} failed. rc=$ret" if $ret;
-
-		if($issvg) {
-			$image->Opaque(color=>'black', fill=>$svgfill); #set the fill color by replacing black with it
+			$image->Read($svgfillfile);
+		} else {
+			$image->Read($v->{iconPath});
 		}
 
 		# resize the image
@@ -274,20 +281,20 @@ sub STREAMDECK_CreateImage($$) {
 	my @pixels = $image->GetPixels(width => 72, height => 72, map => 'BGR');
 
 	my $bitmapdata = join('', map { pack("H", sprintf("%04x", $_)) } @pixels);
-	$image->Write(STREAMDECK_GenCacheFilename($hash, $v));
+	$image->Write(STREAMDECK_GenCacheFilename($hash, $v, 'raw'));
   
 	undef $image; #cleanup
 	return $bitmapdata;
 }
 
-sub STREAMDECK_GenCacheFilename($$) {
-	my ($hash, $v) = @_;
+sub STREAMDECK_GenCacheFilename($$$) {
+	my ($hash, $v, $ext) = @_;
 	my $name = $hash->{NAME};
 	my $value = join("|", map{ $_.":".$v->{$_} } sort keys %{$v});
 	my $id = $name."_".sha1_hex($value);
 	Log3 $name, 5, "Generated hash $id for $value";
 
-	return "/tmp/streamdeck.cache.$id.bmp";
+	return "/tmp/streamdeck.cache.$id.$ext";
 }
 
 sub STREAMDECK_SendImage($$$$) {
