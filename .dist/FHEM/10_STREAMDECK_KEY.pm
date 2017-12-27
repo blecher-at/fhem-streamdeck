@@ -178,6 +178,9 @@ sub STREAMDECK_KEY_SetImage_Blocking($) {
 	my ($name) = @_;
 	my $hash = $defs{$name};
 	my $key = $hash->{key};
+	
+	# TODO: how to set custom icondirs?
+	#@FW_iconDirs = split(":", "default:fhemSVG:openautomation");
 
 	#Log3 $name, 5, "STREAMDECK_KEY_SetImage_Blocking ".Dumper(\$hash);
 	my %parsedvalue = %{$hash->{parsedattr}};

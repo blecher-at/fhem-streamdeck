@@ -33,7 +33,7 @@ use Image::Magick;
 use DevIo;
 use Fcntl ':flock'; 
 use Digest::SHA qw(sha1_hex);
- 
+
 ######################################################################################
 sub STREAMDECK_Read($);
 sub STREAMDECK_Ready($);
@@ -199,6 +199,7 @@ sub STREAMDECK_DoInit($) {
 		Log3 $name, 3, "Icons not yet initialized. triggering fhemweb init";
 		FW_answerCall(undef); # workaround: trigger fake fhemweb request to initialize icons. used in key image building
 	}
+
 }
 
 sub STREAMDECK_CreateImage($$) {
@@ -216,15 +217,6 @@ sub STREAMDECK_CreateImage($$) {
 	}
 	Log3 $name, 5, "image $name cache miss";
 	
-#	my $cachedBitmapData = STREAMDECK_KEY_ImageCache_Read($hash, \%parsedvalue);
-#	if($cachedBitmapData) {
-#	my @pixels = $image->GetPixels(width => 72, height => 72, map => 'BGR');
-#
-#	my $bitmapdata = join('', map { pack("H", sprintf("%04x", $_)) } @pixels);
-#		return $cachedBitmapData;
-	#}
-	
-	#my $image = Image::Magick->new();
 	if ($v->{iconPath}) {
 		my $issvg = $v->{iconPath} =~ ".svg";
 		my $svgfill = $v->{svgfill} || 'white'; #svgfill is default white because default bg is black
@@ -249,32 +241,34 @@ sub STREAMDECK_CreateImage($$) {
 
 		# position the image
 		my $icongravity = $v->{icongravity} || 'center';
-		$image->Extent(geometry => "72x72", gravity=>$icongravity, background=>$v->{bg});
+		my $xparam = defined $v->{iconx} ? 'x':undef;
+		my $yparam = defined $v->{icony} ? 'y':undef;
+		$image->Extent(geometry => "72x72", gravity=>$icongravity, $xparam=>$v->{iconx}, $yparam=>$v->{icony}, background=>$v->{bg});
 	} else {
 		$image->Set(size=>"72x72");
 		$image->Read('canvas:'.$v->{bg});
 	}
 	
 	if($v->{text}) {
-			my $textsize = $v->{textsize} || 16;
-			my $textfill = $v->{textfill} || 'white';
-			my $textstroke = $v->{textstroke} || 'transparent';
-			my $textgravity = $v->{textgravity} || 'south';
-			my $textfont = $v->{font};
-			
-			my $ret = $image->Annotate(
-				text=>$v->{text},
-				antialias=>1,
-				gravity=>$textgravity, 
-				font=>$textfont, 
-				pointsize=>$textsize, 
-				fill=>$textfill, 
-				stroke=>$textstroke, 
-				x=>0, y=>0);
-			Log3 $name, 3, "image annotate rc=$ret" if $ret;
-				
-			$image->Crop(geometry => "72x72", x=>0, y=>0);
-		}	
+		my $textsize = $v->{textsize} || 16;
+		my $textfill = $v->{textfill} || 'white';
+		my $textstroke = $v->{textstroke} || 'transparent';
+		my $textgravity = $v->{textgravity} || 'south';
+		my $textfont = $v->{font};
+		
+		my $ret = $image->Annotate(
+			text=>$v->{text},
+			antialias=>1,
+			gravity=>$textgravity, 
+			font=>$textfont, 
+			pointsize=>$textsize, 
+			fill=>$textfill, 
+			stroke=>$textstroke, 
+			x=>0, y=>0);
+		Log3 $name, 3, "image annotate rc=$ret" if $ret;
+	}	
+	
+	$image->Crop(geometry => "72x72", x=>0, y=>0);
 	$image->Rotate($v->{rotate}) if $v->{rotate};
 	$image->Flop(); #image is expected mirrored on streamdeck
 	my @pixels = $image->GetPixels(width => 72, height => 72, map => 'BGR');
