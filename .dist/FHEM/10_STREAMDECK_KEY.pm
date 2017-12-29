@@ -29,9 +29,11 @@ package main;
 use strict;
 use warnings;
 use Blocking;
-#use Dumper;
+#use Data::Dumper;
 
-my @STREAMDECK_KEY_ImageAttributes = qw(rotate device devstatecolorattr icon color bg font longpressinterval svgfill text textsize textfill textstroke textgravity);
+use vars qw($FW_wname);   # Web instance
+
+my @STREAMDECK_KEY_ImageAttributes = qw(rotate device devstatecolorattr icon color bg font longpressinterval svgfill text textsize textfill textstroke textgravity stylesheetPrefix);
 
 sub STREAMDECK_KEY_Initialize($) {
 	my ($hash) = @_;
@@ -41,7 +43,9 @@ sub STREAMDECK_KEY_Initialize($) {
 	$hash->{NotifyFn} = "STREAMDECK_KEY_Notify";
 
 	$hash->{AttrList}	= join(" ", @STREAMDECK_KEY_ImageAttributes)." image page disable:0,1 ". $readingFnAttributes;
-	$hash->{NotifyOrderPrefix} = "1-" # make sure notifies are called first, image is updated async anyway
+	$hash->{NotifyOrderPrefix} = "1-"; # make sure notifies are called first, image is updated async anyway
+
+	LoadModule("FHEMWEB");
 }
 
 sub STREAMDECK_KEY_Define($$) {
@@ -179,10 +183,11 @@ sub STREAMDECK_KEY_SetImage_Blocking($) {
 	my $hash = $defs{$name};
 	my $key = $hash->{key};
 	
-	# TODO: how to set custom icondirs?
-	#@FW_iconDirs = split(":", "default:fhemSVG:openautomation");
+	# Hack to use icondirs defined here not in fhemweb. see https://forum.fhem.de/index.php/topic,81748.0.html. 
+	# safe to override icondirs, we are in a fork anyway
+	$attr{$FW_wname}{stylesheetPrefix} = $attr{$name}{stylesheetPrefix}; 
+	FW_answerCall("robots.txt");
 
-	#Log3 $name, 5, "STREAMDECK_KEY_SetImage_Blocking ".Dumper(\$hash);
 	my %parsedvalue = %{$hash->{parsedattr}};
 	
 	# magic parse text 

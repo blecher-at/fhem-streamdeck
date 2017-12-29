@@ -193,13 +193,6 @@ sub STREAMDECK_DoInit($) {
 	my ($hash) = @_;
 	my $name = $hash->{NAME};
 	Log3 $name, 3, "STREAMDECK: $name Initialization";
-	
-	my $iconsloaded = FW_iconName("on.png");
-	if (!$iconsloaded) {
-		Log3 $name, 3, "Icons not yet initialized. triggering fhemweb init";
-		FW_answerCall(undef); # workaround: trigger fake fhemweb request to initialize icons. used in key image building
-	}
-
 }
 
 sub STREAMDECK_CreateImage($$) {
