@@ -199,7 +199,7 @@ sub STREAMDECK_CreateImage($$) {
 	my ($hash, $v) = @_;
 	my $name = $hash->{NAME};
 	
-	my $cachefile = STREAMDECK_GenCacheFilename($hash, $v, 'raw');
+	my $cachefile = STREAMDECK_GenCacheFilename($hash, $v, 'bin');
 	if (-e $cachefile) {
 		Log3 $name, 5, "image $name cache hit";
 		open (FILE, "< $cachefile");
