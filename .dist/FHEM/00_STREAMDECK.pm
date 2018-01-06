@@ -199,17 +199,19 @@ sub STREAMDECK_CreateImage($$) {
 	my ($hash, $v) = @_;
 	my $name = $hash->{NAME};
 	
-	my $image = Image::Magick->new();
-	my $ret = $image->Read(STREAMDECK_GenCacheFilename($hash, $v, 'raw'));
-	if(!$ret) {
+	my $cachefile = STREAMDECK_GenCacheFilename($hash, $v, 'raw');
+	if (-e $cachefile) {
 		Log3 $name, 5, "image $name cache hit";
-		my @pixels = $image->GetPixels(width => 72, height => 72, map => 'BGR');
-		my $bitmapdata = join('', map { pack("H", sprintf("%04x", $_)) } @pixels);
-		undef $image; #cleanup
+		open (FILE, "< $cachefile");
+		binmode FILE;
+		read FILE, my $bitmapdata, 15552;
 		return $bitmapdata;
 	}
-	Log3 $name, 5, "image $name cache miss";
 	
+	Log3 $name, 5, "image $name cache miss";
+
+	my $image = Image::Magick->new();
+
 	if ($v->{iconPath}) {
 		my $issvg = $v->{iconPath} =~ ".svg";
 		my $svgfill = $v->{svgfill} || 'white'; #svgfill is default white because default bg is black
@@ -241,9 +243,12 @@ sub STREAMDECK_CreateImage($$) {
 
 		# position the image
 		my $icongravity = $v->{icongravity} || 'center';
-		my $xparam = defined $v->{iconx} ? 'x':undef;
-		my $yparam = defined $v->{icony} ? 'y':undef;
-		$image->Extent(geometry => "72x72", gravity=>$icongravity, $xparam=>$v->{iconx}, $yparam=>$v->{icony}, background=>$v->{bg});
+
+		if (defined $v->{iconx} && defined $v->{icony}) {
+			$image->Extent(geometry => "72x72", gravity=>$icongravity, x=>$v->{iconx}, y=>$v->{icony}, background=>$v->{bg});
+		} else {
+			$image->Extent(geometry => "72x72", gravity=>$icongravity, background=>$v->{bg});
+		}
 	} else {
 		$image->Set(size=>"72x72");
 		$image->Read('canvas:'.$v->{bg});
@@ -272,11 +277,15 @@ sub STREAMDECK_CreateImage($$) {
 	$image->Rotate($v->{rotate}) if $v->{rotate};
 	$image->Flop(); #image is expected mirrored on streamdeck
 	my @pixels = $image->GetPixels(width => 72, height => 72, map => 'BGR');
-
 	my $bitmapdata = join('', map { pack("H", sprintf("%04x", $_)) } @pixels);
-	$image->Write(STREAMDECK_GenCacheFilename($hash, $v, 'raw'));
-  
 	undef $image; #cleanup
+
+	# write to cachefile
+	open (FILE, "> $cachefile");
+	binmode FILE;
+	print FILE $bitmapdata;
+	close(FILE);
+	
 	return $bitmapdata;
 }
 
@@ -397,7 +406,6 @@ sub STREAMDECK_Ready($) {
 		$ret = DevIo_OpenDev($hash, 1, "STREAMDECK_DoInit")
 	}
 	
-	#Log3 $name, 5, "STREAMDECK_Ready $ret";
 	return $ret;
 }
 
@@ -406,6 +414,9 @@ sub STREAMDECK_Attr($$$$) {
 	my $hash = $defs{$name};
   
 	STREAMDECK_Brightness($hash, $value) if $attribute eq "brightness";  
+
+  #lOG3 undef, 1, "COMMANDS:: ".Dumper(\%cmds);
+
 }
 
 

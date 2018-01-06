@@ -29,7 +29,6 @@ package main;
 use strict;
 use warnings;
 use Blocking;
-#use Data::Dumper;
 
 use vars qw($FW_wname);   # Web instance
 
@@ -240,7 +239,7 @@ sub STREAMDECK_KEY_SetImage_Blocking($) {
 	
 	$parsedvalue{rotate} = AttrVal($hash->{IODevName}, "rotate", 0) unless $parsedvalue{rotate};
 	
-	Log3 $name, 5, "Setting image to $parsedvalue{iconPath} $parsedvalue{bg}";
+	#Log3 $name, 5, "Setting image to $parsedvalue{iconPath} $parsedvalue{bg}";
 	my $data = STREAMDECK_CreateImage($hash, \%parsedvalue);
 	STREAMDECK_SendImage($name, $hash->{IODev}, $key, $data);
 	
