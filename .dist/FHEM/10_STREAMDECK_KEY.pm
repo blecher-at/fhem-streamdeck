@@ -135,7 +135,7 @@ sub STREAMDECK_KEY_PRESSED($$) {
 		}
 	} else {
 		RemoveInternalTimer($hash, 'STREAMDECK_KEY_longpress');
-		readingsBulkUpdate($hash, 'longpresstime', 0);
+		readingsBulkUpdateIfChanged($hash, 'longpresstime', 0, 1);
 	}
 
 	readingsEndUpdate($hash, 1);
@@ -254,7 +254,7 @@ sub STREAMDECK_KEY_SetImage_Blocking($) {
 <a name="STREAMDECK_KEY"></a>
 <h3>STREAMDECK_KEY</h3>
 <ul>
-    STREAMDECK_KEY repr‰sentiert einen einzelnen Taster auf dem Elgato Stream Deck.
+    STREAMDECK_KEY repr√§sentiert einen einzelnen Taster auf dem Elgato Stream Deck.
 	Die Nummer der Tasten ist 1-15 und beginnt rechts oben:
 </ul>
 =end html
@@ -263,7 +263,7 @@ sub STREAMDECK_KEY_SetImage_Blocking($) {
 <a name="STREAMDECK"></a>
 <h3>STREAMDECK</h3>
 <ul>
-    STREAMDECK_KEY repr‰sentiert einen einzelnen Taster auf dem Elgato Stream Deck.
+    STREAMDECK_KEY repr√§sentiert einen einzelnen Taster auf dem Elgato Stream Deck.
 	Die Nummer der Tasten ist 1-15 und beginnt rechts oben:
 </ul>
 =end html_DE
